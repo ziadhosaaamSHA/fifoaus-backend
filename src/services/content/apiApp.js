@@ -93,6 +93,7 @@ function parseNewsSources(value) {
         .replace(/\]$/, "")
         .replace(/^['"]/, "")
         .replace(/['"]$/, "")
+        .replace(/^[A-Z_]+=/, "")
         .trim()
     )
     .filter(Boolean)

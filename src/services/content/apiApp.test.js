@@ -428,6 +428,28 @@ describe("content API app", () => {
     expect(body.sources).toEqual(["australian-mining-review", "guardian-au"]);
   });
 
+  it("syncs a news source when the env key was pasted into the route value", async () => {
+    syncNewsMock.mockResolvedValueOnce({
+      source: "australian-mining-review",
+      scrapedCount: 1,
+      newCount: 0,
+      items: []
+    });
+    const app = createContentApiApp();
+
+    const { response, body } = await request(
+      app,
+      "/api/news/sync/NEWS_SOURCE=australian-mining-review?maxResults=3",
+      {
+        method: "POST",
+        headers: { Authorization: "Bearer test-token" }
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(body.source).toBe("australian-mining-review");
+  });
+
   it("marks news items as processed", async () => {
     markNewsProcessedMock.mockResolvedValueOnce(2);
     const app = createContentApiApp();
