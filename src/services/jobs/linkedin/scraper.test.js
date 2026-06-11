@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchLinkedInFifoJobs } from "./scraper.js";
 
 const sampleHtml = `
@@ -42,7 +42,14 @@ function mockFetch(_url, _options) {
 }
 
 describe("fetchLinkedInFifoJobs", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("filters public LinkedIn search cards to FIFO jobs and annotates matches", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-11T12:00:00.000Z"));
+
     const jobs = await fetchLinkedInFifoJobs({
       searchUrl: "https://example.com/jobs/search",
       maxResults: 10,
@@ -59,6 +66,7 @@ describe("fetchLinkedInFifoJobs", () => {
       workType: "",
       listedAt: "1 day ago",
       listedAtUtc: "2026-06-10",
+      listedAtEstimatedAt: "2026-06-10T12:00:00.000Z",
       platform: "linkedin"
     });
     expect(jobs[0].url).toContain("au.linkedin.com/jobs/view");

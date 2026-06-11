@@ -75,7 +75,8 @@ export async function syncFifoJobs({
       highlights: job.highlights,
       summary: job.summary,
       listedAt: job.listedAt,
-      listedAtUtc: job.listedAtUtc
+      listedAtUtc: job.listedAtUtc,
+      listedAtEstimatedAt: job.listedAtEstimatedAt
     });
 
     if (inserted) {

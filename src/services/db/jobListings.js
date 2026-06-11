@@ -68,6 +68,11 @@ export async function ensureJobListingsTable() {
 
   await query(`
     ALTER TABLE seek_listings_seen
+    ADD COLUMN IF NOT EXISTS listed_at_estimated_at TIMESTAMPTZ
+  `);
+
+  await query(`
+    ALTER TABLE seek_listings_seen
     ADD COLUMN IF NOT EXISTS payload JSONB
   `);
 
@@ -123,7 +128,8 @@ export async function markJobListingSeen({
   highlights,
   summary,
   listedAt,
-  listedAtUtc
+  listedAtUtc,
+  listedAtEstimatedAt
 }) {
   if (!isDbEnabled()) {
     throw new Error("database_not_configured");
@@ -146,9 +152,10 @@ export async function markJobListingSeen({
       summary,
       listed_at,
       listed_at_utc,
+      listed_at_estimated_at,
       payload
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
     ON CONFLICT (source, external_id) DO NOTHING
     RETURNING external_id
     `,
@@ -167,6 +174,7 @@ export async function markJobListingSeen({
       summary || null,
       listedAt || null,
       listedAtUtc || null,
+      listedAtEstimatedAt || null,
       {
         externalId,
         title: title || "",
@@ -178,6 +186,7 @@ export async function markJobListingSeen({
         summary: summary || "",
         listedAt: listedAt || "",
         listedAtUtc: listedAtUtc || "",
+        listedAtEstimatedAt: listedAtEstimatedAt || "",
         url,
         platform: platform || "",
         matchedKeywords: Array.isArray(matchedKeywords) ? matchedKeywords : []
@@ -201,6 +210,7 @@ function rowToJob(row) {
     summary: row.summary || payload.summary || "",
     listedAt: row.listed_at || payload.listedAt || "",
     listedAtUtc: row.listed_at_utc || payload.listedAtUtc || "",
+    listedAtEstimatedAt: row.listed_at_estimated_at || payload.listedAtEstimatedAt || "",
     url: row.url || payload.url || "",
     platform: row.platform || payload.platform || "",
     matchedKeywords: Array.isArray(row.matched_keywords)
@@ -225,7 +235,7 @@ export async function listJobListings({ source, status, limit = 20 }) {
     WHERE ($1::text IS NULL OR source = $1)
       AND ($2::text IS NULL OR status = $2)
     ORDER BY
-      COALESCE(NULLIF(listed_at_utc, '')::timestamptz, first_seen_at) DESC,
+      COALESCE(listed_at_estimated_at, NULLIF(listed_at_utc, '')::timestamptz, first_seen_at) DESC,
       first_seen_at DESC
     LIMIT $3
     `,

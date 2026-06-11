@@ -1,4 +1,5 @@
 import { findFifoKeywordMatches } from "../helpers/filters.js";
+import { estimateListedAtFromRelativeText, listedAtSortTime } from "../helpers/listingTime.js";
 
 const SEEK_BASE_URL = "https://au.seek.com";
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
@@ -225,6 +226,7 @@ function normalizeJob(job) {
     summary: job.summary || "",
     listedAt: job.listedAt || "",
     listedAtUtc: job.listedAtUtc || "",
+    listedAtEstimatedAt: job.listedAtEstimatedAt || estimateListedAtFromRelativeText(job.listedAt),
     externalId: job.externalId,
     url: job.url,
     platform: PLATFORM,
@@ -280,8 +282,8 @@ function extractJobsFromStructuredData(html) {
 
   return structuredJobs
     .sort((a, b) => {
-      const aTime = a.job.listedAtUtc ? Date.parse(a.job.listedAtUtc) : 0;
-      const bTime = b.job.listedAtUtc ? Date.parse(b.job.listedAtUtc) : 0;
+      const aTime = listedAtSortTime(a.job);
+      const bTime = listedAtSortTime(b.job);
       if (aTime !== bTime) {
         return bTime - aTime;
       }

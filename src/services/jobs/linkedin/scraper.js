@@ -1,4 +1,5 @@
 import { findFifoKeywordMatches } from "../helpers/filters.js";
+import { estimateListedAtFromRelativeText, listedAtSortTime } from "../helpers/listingTime.js";
 
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 const PLATFORM = "linkedin";
@@ -84,6 +85,7 @@ function createJobFromBlock(block) {
     summary: "",
     listedAt,
     listedAtUtc,
+    listedAtEstimatedAt: estimateListedAtFromRelativeText(listedAt),
     url,
     platform: PLATFORM,
     matchedKeywords: []
@@ -91,38 +93,6 @@ function createJobFromBlock(block) {
 
   job.matchedKeywords = findFifoKeywordMatches(job);
   return job;
-}
-
-function listedAtSortTime(job) {
-  const listedAt = job.listedAt.toLowerCase();
-  const relativeMatch = listedAt.match(/^(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(minute|minutes|hour|hours|day|days)\s+ago$/);
-  const words = {
-    one: 1,
-    two: 2,
-    three: 3,
-    four: 4,
-    five: 5,
-    six: 6,
-    seven: 7,
-    eight: 8,
-    nine: 9,
-    ten: 10,
-    eleven: 11,
-    twelve: 12
-  };
-
-  if (relativeMatch) {
-    const amount = words[relativeMatch[1]] || Number(relativeMatch[1]);
-    const unit = relativeMatch[2];
-    const multiplier = unit.startsWith("minute")
-      ? 60 * 1000
-      : unit.startsWith("hour")
-        ? 60 * 60 * 1000
-        : 24 * 60 * 60 * 1000;
-    return Date.now() - amount * multiplier;
-  }
-
-  return job.listedAtUtc ? Date.parse(job.listedAtUtc) : 0;
 }
 
 export function extractJobsFromHtml(html) {

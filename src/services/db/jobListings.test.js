@@ -26,12 +26,13 @@ describe("jobListings persistence", () => {
 
     await ensureJobListingsTable();
 
-    expect(queryMock).toHaveBeenCalledTimes(15);
+    expect(queryMock).toHaveBeenCalledTimes(16);
     expect(queryMock.mock.calls[0][0]).toContain("CREATE TABLE IF NOT EXISTS seek_listings_seen");
     expect(queryMock.mock.calls[1][0]).toContain("ADD COLUMN IF NOT EXISTS platform TEXT");
     expect(queryMock.mock.calls[2][0]).toContain("ADD COLUMN IF NOT EXISTS matched_keywords TEXT[]");
-    expect(queryMock.mock.calls[13][0]).toContain("ADD COLUMN IF NOT EXISTS posted_at TIMESTAMPTZ");
-    expect(queryMock.mock.calls[14][0]).toContain("ADD COLUMN IF NOT EXISTS processed_at TIMESTAMPTZ");
+    expect(queryMock.mock.calls[13][0]).toContain("ADD COLUMN IF NOT EXISTS status TEXT");
+    expect(queryMock.mock.calls[14][0]).toContain("ADD COLUMN IF NOT EXISTS posted_at TIMESTAMPTZ");
+    expect(queryMock.mock.calls[15][0]).toContain("ADD COLUMN IF NOT EXISTS processed_at TIMESTAMPTZ");
   });
 
   it("counts seen listings by source partition", async () => {
@@ -58,7 +59,8 @@ describe("jobListings persistence", () => {
       highlights: [],
       summary: "",
       listedAt: "21 hours ago",
-      listedAtUtc: "2026-06-10"
+      listedAtUtc: "2026-06-10",
+      listedAtEstimatedAt: "2026-06-10T03:00:00.000Z"
     });
 
     expect(inserted).toBe(true);
@@ -78,10 +80,12 @@ describe("jobListings persistence", () => {
       null,
       "21 hours ago",
       "2026-06-10",
+      "2026-06-10T03:00:00.000Z",
       expect.objectContaining({
         externalId: "4423102032",
         platform: "linkedin",
-        matchedKeywords: ["fifo"]
+        matchedKeywords: ["fifo"],
+        listedAtEstimatedAt: "2026-06-10T03:00:00.000Z"
       })
     ]);
   });
@@ -115,6 +119,7 @@ describe("jobListings persistence", () => {
           summary: "",
           listed_at: "21 hours ago",
           listed_at_utc: "2026-06-10",
+          listed_at_estimated_at: "2026-06-10T03:00:00.000Z",
           url: "https://au.linkedin.com/jobs/view/project-supervisor-4423102032",
           platform: "linkedin",
           matched_keywords: ["fifo"],
@@ -135,6 +140,7 @@ describe("jobListings persistence", () => {
         title: "Project Supervisor | FIFO",
         platform: "linkedin",
         matchedKeywords: ["fifo"],
+        listedAtEstimatedAt: "2026-06-10T03:00:00.000Z",
         status: "pending",
         processedAt: null
       })

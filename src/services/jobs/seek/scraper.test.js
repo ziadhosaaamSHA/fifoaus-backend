@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { fetchSeekFifoJobs } from "./scraper.js";
 
 // Mock HTML containing two job entries; only the first matches FIFO keywords.
@@ -38,7 +38,13 @@ function mockFetch(_url, _options) {
 }
 
 describe("fetchSeekFifoJobs", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("filters out non-FIFO jobs based on keyword list and annotates matches", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-06-11T12:00:00.000Z"));
       const jobs = await fetchSeekFifoJobs({
         searchUrl: "https://example.com/search",
         maxResults: 10,
@@ -50,6 +56,8 @@ describe("fetchSeekFifoJobs", () => {
       expect(job.company).toBe("MiningCo");
       expect(job.url).toContain("/job/12345");
       expect(job.platform).toBe("seek");
+      expect(job.listedAt).toBe("Listed 2 days ago");
+      expect(job.listedAtEstimatedAt).toBe("2026-06-09T12:00:00.000Z");
       expect(job.matchedKeywords).toContain("fifo");
       expect(job.matchedKeywords).toContain("fifo mining");
   });
