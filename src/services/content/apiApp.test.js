@@ -399,6 +399,35 @@ describe("content API app", () => {
     });
   });
 
+  it("syncs quoted comma-separated news sources with a trailing comma", async () => {
+    syncNewsMock
+      .mockResolvedValueOnce({
+        source: "australian-mining-review",
+        scrapedCount: 1,
+        newCount: 0,
+        items: []
+      })
+      .mockResolvedValueOnce({
+        source: "guardian-au",
+        scrapedCount: 1,
+        newCount: 0,
+        items: []
+      });
+    const app = createContentApiApp();
+
+    const { response, body } = await request(
+      app,
+      "/api/news/sync/'australian-mining-review','guardian-au',?maxResults=3",
+      {
+        method: "POST",
+        headers: { Authorization: "Bearer test-token" }
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(body.sources).toEqual(["australian-mining-review", "guardian-au"]);
+  });
+
   it("marks news items as processed", async () => {
     markNewsProcessedMock.mockResolvedValueOnce(2);
     const app = createContentApiApp();

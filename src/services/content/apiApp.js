@@ -86,8 +86,17 @@ function parseNewsSources(value) {
 
   return String(value)
     .split(",")
-    .map((source) => newsSourceSchema.parse(source.trim()))
-    .filter(Boolean);
+    .map((source) =>
+      source
+        .trim()
+        .replace(/^\[/, "")
+        .replace(/\]$/, "")
+        .replace(/^['"]/, "")
+        .replace(/['"]$/, "")
+        .trim()
+    )
+    .filter(Boolean)
+    .map((source) => newsSourceSchema.parse(source));
 }
 
 function sortNewsItemsNewestFirst(items) {
