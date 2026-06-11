@@ -1,4 +1,5 @@
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import { z } from "zod";
 import { getContentApiConfig } from "../../config.js";
 import { isDbEnabled } from "../db/jobListings.js";
@@ -67,6 +68,24 @@ export function createContentApiApp() {
   app.set("trust proxy", 1);
   app.use(express.json());
 
+  // General rate limiter for all /api routes
+  const generalLimiter = rateLimit({
+    windowMs: 5 * 60 * 1000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "too_many_requests" }
+  });
+
+  // Strict limiter for expensive sync/scrape endpoints
+  const syncLimiter = rateLimit({
+    windowMs: 5 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "too_many_sync_requests" }
+  });
+
   app.get("/health", (_req, res) =>
     res.status(200).json({
       ok: true,
@@ -76,6 +95,7 @@ export function createContentApiApp() {
   );
 
   const api = express.Router();
+  api.use(generalLimiter);
   api.use(requireApiToken(cfg));
 
   api.get("/jobs/sources", (_req, res) => {
@@ -99,6 +119,7 @@ export function createContentApiApp() {
 
   api.get(
     "/jobs/fetch/:source",
+    syncLimiter,
     asyncRoute(async (req, res) => {
       const source = sourceSchema.parse(req.params.source);
       const maxResults = maxResultsSchema.parse(req.query.maxResults);
@@ -110,6 +131,7 @@ export function createContentApiApp() {
 
   api.post(
     "/jobs/sync",
+    syncLimiter,
     asyncRoute(async (req, res) => {
       const maxResults = maxResultsSchema.parse(req.query.maxResults ?? req.body?.maxResults);
       const results = await syncAllFifoJobs({ cfg, maxResults });
@@ -142,6 +164,7 @@ export function createContentApiApp() {
 
   api.post(
     "/jobs/sync/:source",
+    syncLimiter,
     asyncRoute(async (req, res) => {
       const source = sourceSchema.parse(req.params.source);
       const maxResults = maxResultsSchema.parse(req.query.maxResults ?? req.body?.maxResults);
