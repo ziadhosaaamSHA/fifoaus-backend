@@ -81,6 +81,36 @@ const asyncRoute =
       Promise.resolve(fn(req, res, next)).catch(next);
     };
 
+function parseNewsSources(value) {
+  if (!value) return [];
+
+  return String(value)
+    .split(",")
+    .map((source) => newsSourceSchema.parse(source.trim()))
+    .filter(Boolean);
+}
+
+function sortNewsItemsNewestFirst(items) {
+  return [...items].sort((a, b) => {
+    const aTime = a.publishedAt ? Date.parse(a.publishedAt) : 0;
+    const bTime = b.publishedAt ? Date.parse(b.publishedAt) : 0;
+    return bTime - aTime;
+  });
+}
+
+function combineNewsResults({ sources, results }) {
+  const items = sortNewsItemsNewestFirst(results.flatMap((result) => result.items || []));
+
+  return {
+    source: sources.join(","),
+    sources,
+    scrapedCount: results.reduce((count, result) => count + (result.scrapedCount || 0), 0),
+    newCount: results.reduce((count, result) => count + (result.newCount || 0), 0),
+    items,
+    results
+  };
+}
+
 export function createContentApiApp() {
   const cfg = getContentApiConfig();
   const app = express();
@@ -201,10 +231,19 @@ export function createContentApiApp() {
   api.get(
     "/news",
     asyncRoute(async (req, res) => {
-      const source = req.query.source ? newsSourceSchema.parse(req.query.source) : undefined;
+      const sources = parseNewsSources(req.query.source);
       const status = req.query.status ? statusSchema.parse(req.query.status) : undefined;
       const limit = limitSchema.parse(req.query.limit);
-      const items = await listNews({ source, status, limit });
+      const items =
+        sources.length > 0
+          ? sortNewsItemsNewestFirst(
+              (
+                await Promise.all(
+                  sources.map((source) => listNews({ source, status, limit }))
+                )
+              ).flat()
+            ).slice(0, limit)
+          : await listNews({ status, limit });
 
       res.status(200).json({
         items,
@@ -216,9 +255,13 @@ export function createContentApiApp() {
   api.get(
     "/news/fetch/:source",
     asyncRoute(async (req, res) => {
-      const source = newsSourceSchema.parse(req.params.source);
+      const sources = parseNewsSources(req.params.source);
       const maxResults = maxResultsSchema.parse(req.query.maxResults);
-      const result = await fetchNewsPreview({ source, maxResults });
+      const results = await Promise.all(
+        sources.map((source) => fetchNewsPreview({ source, maxResults }))
+      );
+      const result =
+        results.length === 1 ? results[0] : combineNewsResults({ sources, results });
 
       res.status(200).json(result);
     })
@@ -237,9 +280,13 @@ export function createContentApiApp() {
   api.post(
     "/news/sync/:source",
     asyncRoute(async (req, res) => {
-      const source = newsSourceSchema.parse(req.params.source);
+      const sources = parseNewsSources(req.params.source);
       const maxResults = maxResultsSchema.parse(req.query.maxResults ?? req.body?.maxResults);
-      const result = await syncNews({ source, maxResults });
+      const results = await Promise.all(
+        sources.map((source) => syncNews({ source, maxResults }))
+      );
+      const result =
+        results.length === 1 ? results[0] : combineNewsResults({ sources, results });
 
       res.status(200).json(result);
     })

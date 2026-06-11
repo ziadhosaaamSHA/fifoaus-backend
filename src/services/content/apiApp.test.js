@@ -243,6 +243,46 @@ describe("content API app", () => {
     });
   });
 
+  it("lists persisted news across comma-separated sources", async () => {
+    listNewsMock
+      .mockResolvedValueOnce([
+        {
+          externalId: "n1",
+          title: "Older mining update",
+          publishedAt: "2026-06-10T01:00:00.000Z"
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          externalId: "n2",
+          title: "Newer mining update",
+          publishedAt: "2026-06-11T01:00:00.000Z"
+        }
+      ]);
+    const app = createContentApiApp();
+
+    const { response, body } = await request(
+      app,
+      "/api/news?source=australian-mining-review,guardian-au&status=pending&limit=5",
+      {
+        headers: { Authorization: "Bearer test-token" }
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(body.items.map((item) => item.externalId)).toEqual(["n2", "n1"]);
+    expect(listNewsMock).toHaveBeenCalledWith({
+      source: "australian-mining-review",
+      status: "pending",
+      limit: 5
+    });
+    expect(listNewsMock).toHaveBeenCalledWith({
+      source: "guardian-au",
+      status: "pending",
+      limit: 5
+    });
+  });
+
   it("rejects invalid news status filters", async () => {
     const app = createContentApiApp();
 
@@ -303,6 +343,56 @@ describe("content API app", () => {
 
     expect(response.status).toBe(200);
     expect(body.source).toBe("guardian-au");
+    expect(syncNewsMock).toHaveBeenCalledWith({
+      source: "guardian-au",
+      maxResults: 3
+    });
+  });
+
+  it("syncs comma-separated news sources", async () => {
+    syncNewsMock
+      .mockResolvedValueOnce({
+        source: "australian-mining-review",
+        scrapedCount: 3,
+        newCount: 1,
+        items: [
+          {
+            externalId: "n1",
+            publishedAt: "2026-06-10T01:00:00.000Z"
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        source: "guardian-au",
+        scrapedCount: 2,
+        newCount: 1,
+        items: [
+          {
+            externalId: "n2",
+            publishedAt: "2026-06-11T01:00:00.000Z"
+          }
+        ]
+      });
+    const app = createContentApiApp();
+
+    const { response, body } = await request(
+      app,
+      "/api/news/sync/australian-mining-review,guardian-au?maxResults=3",
+      {
+        method: "POST",
+        headers: { Authorization: "Bearer test-token" }
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(body.sources).toEqual(["australian-mining-review", "guardian-au"]);
+    expect(body.scrapedCount).toBe(5);
+    expect(body.newCount).toBe(2);
+    expect(body.items.map((item) => item.externalId)).toEqual(["n2", "n1"]);
+    expect(syncNewsMock).toHaveBeenCalledWith({
+      source: "australian-mining-review",
+      maxResults: 3
+    });
     expect(syncNewsMock).toHaveBeenCalledWith({
       source: "guardian-au",
       maxResults: 3
