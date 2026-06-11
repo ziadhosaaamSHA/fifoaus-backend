@@ -37,6 +37,7 @@ const newsSourceSchema = z.enum([
 const statusSchema = z.enum(["pending", "processed", "expired"]);
 const limitSchema = z.coerce.number().int().positive().max(100).default(20);
 const maxResultsSchema = z.coerce.number().int().positive().max(25).optional();
+const ageHoursSchema = z.coerce.number().nonnegative().max(24 * 30).optional();
 const markProcessedBodySchema = z.object({
   items: z
     .array(
@@ -121,6 +122,17 @@ function combineNewsResults({ sources, results }) {
   };
 }
 
+function parseAgeFilters(req) {
+  const rawMinAgeHours = req.query.minAgeHours ?? req.body?.minAgeHours;
+  const rawMaxAgeHours = req.query.maxAgeHours ?? req.body?.maxAgeHours;
+  const minAgeHours = rawMinAgeHours === "" ? undefined : ageHoursSchema.parse(rawMinAgeHours);
+  const maxAgeHours = rawMaxAgeHours === "" ? undefined : ageHoursSchema.parse(rawMaxAgeHours);
+  return {
+    ...(minAgeHours !== undefined ? { minAgeHours } : {}),
+    ...(maxAgeHours !== undefined ? { maxAgeHours } : {})
+  };
+}
+
 export function createContentApiApp() {
   const cfg = getContentApiConfig();
   const app = express();
@@ -172,7 +184,8 @@ export function createContentApiApp() {
       const source = req.query.source ? sourceSchema.parse(req.query.source) : undefined;
       const status = req.query.status ? statusSchema.parse(req.query.status) : undefined;
       const limit = limitSchema.parse(req.query.limit);
-      const jobs = await listFifoJobs({ source, status, limit });
+      const ageFilters = parseAgeFilters(req);
+      const jobs = await listFifoJobs({ source, status, limit, ...ageFilters });
 
       res.status(200).json({
         jobs,
@@ -187,7 +200,8 @@ export function createContentApiApp() {
     asyncRoute(async (req, res) => {
       const source = sourceSchema.parse(req.params.source);
       const maxResults = maxResultsSchema.parse(req.query.maxResults);
-      const result = await fetchFifoJobsPreview({ cfg, source, maxResults });
+      const ageFilters = parseAgeFilters(req);
+      const result = await fetchFifoJobsPreview({ cfg, source, maxResults, ...ageFilters });
 
       res.status(200).json(result);
     })
@@ -198,7 +212,8 @@ export function createContentApiApp() {
     syncLimiter,
     asyncRoute(async (req, res) => {
       const maxResults = maxResultsSchema.parse(req.query.maxResults ?? req.body?.maxResults);
-      const results = await syncAllFifoJobs({ cfg, maxResults });
+      const ageFilters = parseAgeFilters(req);
+      const results = await syncAllFifoJobs({ cfg, maxResults, ...ageFilters });
 
       res.status(200).json({
         results
@@ -232,7 +247,8 @@ export function createContentApiApp() {
     asyncRoute(async (req, res) => {
       const source = sourceSchema.parse(req.params.source);
       const maxResults = maxResultsSchema.parse(req.query.maxResults ?? req.body?.maxResults);
-      const result = await syncFifoJobs({ cfg, source, maxResults });
+      const ageFilters = parseAgeFilters(req);
+      const result = await syncFifoJobs({ cfg, source, maxResults, ...ageFilters });
 
       res.status(200).json(result);
     })
@@ -244,16 +260,17 @@ export function createContentApiApp() {
       const sources = parseNewsSources(req.query.source);
       const status = req.query.status ? statusSchema.parse(req.query.status) : undefined;
       const limit = limitSchema.parse(req.query.limit);
+      const ageFilters = parseAgeFilters(req);
       const items =
         sources.length > 0
           ? sortNewsItemsNewestFirst(
               (
                 await Promise.all(
-                  sources.map((source) => listNews({ source, status, limit }))
+                  sources.map((source) => listNews({ source, status, limit, ...ageFilters }))
                 )
               ).flat()
             ).slice(0, limit)
-          : await listNews({ status, limit });
+          : await listNews({ status, limit, ...ageFilters });
 
       res.status(200).json({
         items,
@@ -267,8 +284,9 @@ export function createContentApiApp() {
     asyncRoute(async (req, res) => {
       const sources = parseNewsSources(req.params.source);
       const maxResults = maxResultsSchema.parse(req.query.maxResults);
+      const ageFilters = parseAgeFilters(req);
       const results = await Promise.all(
-        sources.map((source) => fetchNewsPreview({ source, maxResults }))
+        sources.map((source) => fetchNewsPreview({ source, maxResults, ...ageFilters }))
       );
       const result =
         results.length === 1 ? results[0] : combineNewsResults({ sources, results });
@@ -281,7 +299,8 @@ export function createContentApiApp() {
     "/news/sync",
     asyncRoute(async (req, res) => {
       const maxResults = maxResultsSchema.parse(req.query.maxResults ?? req.body?.maxResults);
-      const results = await syncAllNews({ maxResults });
+      const ageFilters = parseAgeFilters(req);
+      const results = await syncAllNews({ maxResults, ...ageFilters });
 
       res.status(200).json({ results });
     })
@@ -292,8 +311,9 @@ export function createContentApiApp() {
     asyncRoute(async (req, res) => {
       const sources = parseNewsSources(req.params.source);
       const maxResults = maxResultsSchema.parse(req.query.maxResults ?? req.body?.maxResults);
+      const ageFilters = parseAgeFilters(req);
       const results = await Promise.all(
-        sources.map((source) => syncNews({ source, maxResults }))
+        sources.map((source) => syncNews({ source, maxResults, ...ageFilters }))
       );
       const result =
         results.length === 1 ? results[0] : combineNewsResults({ sources, results });

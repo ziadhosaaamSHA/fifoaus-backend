@@ -223,23 +223,33 @@ function rowToJob(row) {
   };
 }
 
-export async function listJobListings({ source, status, limit = 20 }) {
+export async function listJobListings({ source, status, limit = 20, minAgeHours, maxAgeHours }) {
   if (!isDbEnabled()) {
     throw new Error("database_not_configured");
   }
 
   const { rows } = await query(
     `
+    WITH listings AS (
+      SELECT
+        *,
+        COALESCE(
+          listed_at_estimated_at,
+          NULLIF(listed_at_utc, '')::timestamptz,
+          first_seen_at
+        ) AS published_time
+      FROM seek_listings_seen
+    )
     SELECT *
-    FROM seek_listings_seen
+    FROM listings
     WHERE ($1::text IS NULL OR source = $1)
       AND ($2::text IS NULL OR status = $2)
-    ORDER BY
-      COALESCE(listed_at_estimated_at, NULLIF(listed_at_utc, '')::timestamptz, first_seen_at) DESC,
-      first_seen_at DESC
-    LIMIT $3
+      AND ($3::numeric IS NULL OR published_time <= NOW() - ($3::numeric * INTERVAL '1 hour'))
+      AND ($4::numeric IS NULL OR published_time >= NOW() - ($4::numeric * INTERVAL '1 hour'))
+    ORDER BY published_time DESC, first_seen_at DESC
+    LIMIT $5
     `,
-    [source || null, status || null, limit]
+    [source || null, status || null, minAgeHours ?? null, maxAgeHours ?? null, limit]
   );
 
   return rows.map(rowToJob);

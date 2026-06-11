@@ -6,6 +6,7 @@ import {
   markNewsItemsProcessed,
   markNewsItemSeen
 } from "../db/newsItems.js";
+import { filterByContentAge, getNewsPublishedTime } from "../content/ageFilter.js";
 import { fetchRssNewsItems } from "./rss.js";
 
 const NEWS_SOURCES = {
@@ -77,9 +78,14 @@ export function getNewsSourceNames() {
   return Object.keys(NEWS_SOURCES);
 }
 
-export async function fetchNewsPreview({ source, maxResults, fetchImpl = fetch }) {
+export async function fetchNewsPreview({ source, maxResults, minAgeHours, maxAgeHours, fetchImpl = fetch }) {
   const sourceConfig = getNewsSourceConfig(source);
-  const items = await fetchRssNewsItems({ sourceConfig, fetchImpl });
+  const scrapedItems = await fetchRssNewsItems({ sourceConfig, fetchImpl });
+  const items = filterByContentAge(scrapedItems, {
+    minAgeHours,
+    maxAgeHours,
+    getTime: getNewsPublishedTime
+  });
 
   return {
     source,
@@ -89,7 +95,7 @@ export async function fetchNewsPreview({ source, maxResults, fetchImpl = fetch }
   };
 }
 
-export async function syncNews({ source, maxResults, fetchImpl = fetch }) {
+export async function syncNews({ source, maxResults, minAgeHours, maxAgeHours, fetchImpl = fetch }) {
   if (!isDbEnabled()) {
     throw new Error("database_not_configured");
   }
@@ -97,7 +103,12 @@ export async function syncNews({ source, maxResults, fetchImpl = fetch }) {
   const sourceConfig = getNewsSourceConfig(source);
   await ensureNewsItemsTable();
 
-  const items = await fetchRssNewsItems({ sourceConfig, fetchImpl });
+  const scrapedItems = await fetchRssNewsItems({ sourceConfig, fetchImpl });
+  const items = filterByContentAge(scrapedItems, {
+    minAgeHours,
+    maxAgeHours,
+    getTime: getNewsPublishedTime
+  });
   const selectedItems = items.slice(0, maxResults || 20);
   const newItems = [];
 
@@ -115,21 +126,21 @@ export async function syncNews({ source, maxResults, fetchImpl = fetch }) {
   };
 }
 
-export async function syncAllNews({ maxResults, fetchImpl = fetch } = {}) {
+export async function syncAllNews({ maxResults, minAgeHours, maxAgeHours, fetchImpl = fetch } = {}) {
   const results = {};
   for (const source of getNewsSourceNames()) {
-    results[source] = await syncNews({ source, maxResults, fetchImpl });
+    results[source] = await syncNews({ source, maxResults, minAgeHours, maxAgeHours, fetchImpl });
   }
   return results;
 }
 
-export async function listNews({ source, status, limit = 20 }) {
+export async function listNews({ source, status, limit = 20, minAgeHours, maxAgeHours }) {
   if (!isDbEnabled()) {
     throw new Error("database_not_configured");
   }
 
   await ensureNewsItemsTable();
-  return listNewsItems({ source, status, limit });
+  return listNewsItems({ source, status, limit, minAgeHours, maxAgeHours });
 }
 
 export async function markNewsProcessed({ items }) {

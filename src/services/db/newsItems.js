@@ -107,21 +107,29 @@ export async function markNewsItemSeen({
   return rows.length > 0;
 }
 
-export async function listNewsItems({ source, status, limit = 20 }) {
+export async function listNewsItems({ source, status, limit = 20, minAgeHours, maxAgeHours }) {
   if (!isDbEnabled()) {
     throw new Error("database_not_configured");
   }
 
   const { rows } = await query(
     `
+    WITH items AS (
+      SELECT
+        *,
+        COALESCE(published_at, first_seen_at) AS published_time
+      FROM news_items
+    )
     SELECT *
-    FROM news_items
+    FROM items
     WHERE ($1::text IS NULL OR source = $1)
       AND ($2::text IS NULL OR status = $2)
-    ORDER BY COALESCE(published_at, first_seen_at) DESC, first_seen_at DESC
-    LIMIT $3
+      AND ($3::numeric IS NULL OR published_time <= NOW() - ($3::numeric * INTERVAL '1 hour'))
+      AND ($4::numeric IS NULL OR published_time >= NOW() - ($4::numeric * INTERVAL '1 hour'))
+    ORDER BY published_time DESC, first_seen_at DESC
+    LIMIT $5
     `,
-    [source || null, status || null, limit]
+    [source || null, status || null, minAgeHours ?? null, maxAgeHours ?? null, limit]
   );
 
   return rows.map(rowToNewsItem);

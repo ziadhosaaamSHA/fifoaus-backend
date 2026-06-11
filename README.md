@@ -17,6 +17,8 @@ GET /health
 GET /api/jobs
 GET /api/jobs?source=seek&limit=20
 GET /api/jobs?source=linkedin&limit=20
+GET /api/jobs?maxAgeHours=24
+GET /api/jobs?minAgeHours=24
 GET /api/jobs/sources
 GET /api/jobs/fetch/:source
 POST /api/jobs/sync
@@ -28,6 +30,8 @@ POST /api/jobs/cleanup
 GET /api/news
 GET /api/news?source=australian-mining-review&limit=20
 GET /api/news?status=pending
+GET /api/news?maxAgeHours=24
+GET /api/news?minAgeHours=24
 GET /api/news/sources
 GET /api/news/fetch/:source
 POST /api/news/sync
@@ -56,3 +60,9 @@ Initial RSS news sources:
 News items use the same broad lifecycle model as jobs: `pending`, `processed`,
 and `expired`. RSS fetch endpoints return normalized previews without writing to
 the database; sync endpoints persist only newly seen items.
+
+Age filters are optional:
+
+- `maxAgeHours=24` returns/syncs only content posted within the last 24 hours.
+- `minAgeHours=24` returns/syncs only content at least 24 hours old.
+- Leave both unset to keep the default all-content behavior.

@@ -145,7 +145,23 @@ describe("jobListings persistence", () => {
         processedAt: null
       })
     ]);
-    expect(queryMock.mock.calls[0][1]).toEqual(["linkedin:fifo", "pending", 5]);
+    expect(queryMock.mock.calls[0][1]).toEqual(["linkedin:fifo", "pending", null, null, 5]);
+  });
+
+  it("lists persisted jobs with optional age filters", async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] });
+
+    await listJobListings({
+      source: "linkedin:fifo",
+      status: "pending",
+      limit: 5,
+      minAgeHours: 24,
+      maxAgeHours: 72
+    });
+
+    expect(queryMock.mock.calls[0][0]).toContain("published_time <= NOW()");
+    expect(queryMock.mock.calls[0][0]).toContain("published_time >= NOW()");
+    expect(queryMock.mock.calls[0][1]).toEqual(["linkedin:fifo", "pending", 24, 72, 5]);
   });
 
   it("marks matching listings as processed", async () => {

@@ -10,6 +10,7 @@ import {
 } from "../db/jobListings.js";
 import { fetchLinkedInFifoJobs } from "./linkedin/scraper.js";
 import { fetchSeekFifoJobs } from "./seek/scraper.js";
+import { filterByContentAge, getJobPublishedTime } from "../content/ageFilter.js";
 
 const SOURCE_CONFIG = {
   linkedin: {
@@ -44,7 +45,9 @@ export async function syncFifoJobs({
   cfg = getConfig(),
   source,
   searchUrl,
-  maxResults
+  maxResults,
+  minAgeHours,
+  maxAgeHours
 }) {
   if (!isDbEnabled()) {
     throw new Error("database_not_configured");
@@ -54,9 +57,14 @@ export async function syncFifoJobs({
   await ensureJobListingsTable();
 
   const seenBefore = await countSeenJobListings({ source: sourceConfig.source });
-  const jobs = await sourceConfig.fetchJobs({
+  const scrapedJobs = await sourceConfig.fetchJobs({
     searchUrl: searchUrl || sourceConfig.getSearchUrl(cfg),
     maxResults: maxResults || sourceConfig.getMaxResults(cfg)
+  });
+  const jobs = filterByContentAge(scrapedJobs, {
+    minAgeHours,
+    maxAgeHours,
+    getTime: getJobPublishedTime
   });
 
   const newJobs = [];
@@ -98,12 +106,19 @@ export async function fetchFifoJobsPreview({
   cfg = getConfig(),
   source,
   searchUrl,
-  maxResults
+  maxResults,
+  minAgeHours,
+  maxAgeHours
 }) {
   const sourceConfig = getSourceConfig(source);
-  const jobs = await sourceConfig.fetchJobs({
+  const scrapedJobs = await sourceConfig.fetchJobs({
     searchUrl: searchUrl || sourceConfig.getSearchUrl(cfg),
     maxResults: maxResults || sourceConfig.getMaxResults(cfg)
+  });
+  const jobs = filterByContentAge(scrapedJobs, {
+    minAgeHours,
+    maxAgeHours,
+    getTime: getJobPublishedTime
   });
 
   return {
@@ -114,15 +129,15 @@ export async function fetchFifoJobsPreview({
   };
 }
 
-export async function syncAllFifoJobs({ cfg = getConfig(), maxResults } = {}) {
+export async function syncAllFifoJobs({ cfg = getConfig(), maxResults, minAgeHours, maxAgeHours } = {}) {
   const results = {};
   for (const source of getJobSourceNames()) {
-    results[source] = await syncFifoJobs({ cfg, source, maxResults });
+    results[source] = await syncFifoJobs({ cfg, source, maxResults, minAgeHours, maxAgeHours });
   }
   return results;
 }
 
-export async function listFifoJobs({ source, status, limit = 20 }) {
+export async function listFifoJobs({ source, status, limit = 20, minAgeHours, maxAgeHours }) {
   if (!isDbEnabled()) {
     throw new Error("database_not_configured");
   }
@@ -132,7 +147,9 @@ export async function listFifoJobs({ source, status, limit = 20 }) {
   return listJobListings({
     source: sourceConfig?.source,
     status,
-    limit
+    limit,
+    minAgeHours,
+    maxAgeHours
   });
 }
 

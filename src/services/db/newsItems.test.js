@@ -95,7 +95,29 @@ describe("newsItems persistence", () => {
         matchedKeywords: ["mining", "gold"]
       })
     ]);
-    expect(queryMock.mock.calls[0][1]).toEqual(["australian-mining-review", "pending", 5]);
+    expect(queryMock.mock.calls[0][1]).toEqual(["australian-mining-review", "pending", null, null, 5]);
+  });
+
+  it("lists news items with optional age filters", async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] });
+
+    await listNewsItems({
+      source: "australian-mining-review",
+      status: "pending",
+      limit: 5,
+      minAgeHours: 24,
+      maxAgeHours: 72
+    });
+
+    expect(queryMock.mock.calls[0][0]).toContain("published_time <= NOW()");
+    expect(queryMock.mock.calls[0][0]).toContain("published_time >= NOW()");
+    expect(queryMock.mock.calls[0][1]).toEqual([
+      "australian-mining-review",
+      "pending",
+      24,
+      72,
+      5
+    ]);
   });
 
   it("marks news items processed", async () => {
