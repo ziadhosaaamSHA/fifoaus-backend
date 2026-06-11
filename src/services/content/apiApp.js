@@ -80,7 +80,7 @@ export function createContentApiApp() {
   // Strict limiter for expensive sync/scrape endpoints
   const syncLimiter = rateLimit({
     windowMs: 5 * 60 * 1000,
-    max: 10,
+    max: 50,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: "too_many_sync_requests" }
