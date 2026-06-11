@@ -20,6 +20,12 @@ const markFifoJobsProcessedMock = vi.fn();
 const cleanupFifoJobsMock = vi.fn();
 const syncFifoJobsMock = vi.fn();
 const syncAllFifoJobsMock = vi.fn();
+const listNewsMock = vi.fn();
+const fetchNewsPreviewMock = vi.fn();
+const markNewsProcessedMock = vi.fn();
+const cleanupNewsMock = vi.fn();
+const syncNewsMock = vi.fn();
+const syncAllNewsMock = vi.fn();
 
 vi.mock("../jobs/sync.js", () => ({
   cleanupFifoJobs: (...args) => cleanupFifoJobsMock(...args),
@@ -29,6 +35,16 @@ vi.mock("../jobs/sync.js", () => ({
   markFifoJobsProcessed: (...args) => markFifoJobsProcessedMock(...args),
   syncFifoJobs: (...args) => syncFifoJobsMock(...args),
   syncAllFifoJobs: (...args) => syncAllFifoJobsMock(...args)
+}));
+
+vi.mock("../news/sync.js", () => ({
+  cleanupNews: (...args) => cleanupNewsMock(...args),
+  fetchNewsPreview: (...args) => fetchNewsPreviewMock(...args),
+  getNewsSourceNames: () => ["australian-mining-review", "guardian-au"],
+  listNews: (...args) => listNewsMock(...args),
+  markNewsProcessed: (...args) => markNewsProcessedMock(...args),
+  syncNews: (...args) => syncNewsMock(...args),
+  syncAllNews: (...args) => syncAllNewsMock(...args)
 }));
 
 const { createContentApiApp } = await import("./apiApp.js");
@@ -52,6 +68,12 @@ describe("content API app", () => {
     cleanupFifoJobsMock.mockReset();
     syncFifoJobsMock.mockReset();
     syncAllFifoJobsMock.mockReset();
+    listNewsMock.mockReset();
+    fetchNewsPreviewMock.mockReset();
+    markNewsProcessedMock.mockReset();
+    cleanupNewsMock.mockReset();
+    syncNewsMock.mockReset();
+    syncAllNewsMock.mockReset();
   });
 
   it("requires the configured API token for API routes", async () => {
@@ -197,6 +219,149 @@ describe("content API app", () => {
       cfg: expect.any(Object),
       source: "linkedin",
       maxResults: 3
+    });
+  });
+
+  it("lists persisted news items", async () => {
+    listNewsMock.mockResolvedValueOnce([{ externalId: "n1", title: "FIFO mine update" }]);
+    const app = createContentApiApp();
+
+    const { response, body } = await request(
+      app,
+      "/api/news?source=australian-mining-review&status=pending&limit=5",
+      {
+        headers: { Authorization: "Bearer test-token" }
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(body.items).toHaveLength(1);
+    expect(listNewsMock).toHaveBeenCalledWith({
+      source: "australian-mining-review",
+      status: "pending",
+      limit: 5
+    });
+  });
+
+  it("rejects invalid news status filters", async () => {
+    const app = createContentApiApp();
+
+    const { response, body } = await request(app, "/api/news?status=posted", {
+      headers: { Authorization: "Bearer test-token" }
+    });
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("invalid_request");
+  });
+
+  it("fetches a non-persistent news preview from a source", async () => {
+    fetchNewsPreviewMock.mockResolvedValueOnce({
+      source: "australian-mining-review",
+      scrapedCount: 1,
+      items: [{ externalId: "n1" }]
+    });
+    const app = createContentApiApp();
+
+    const { response, body } = await request(app, "/api/news/fetch/australian-mining-review?maxResults=3", {
+      headers: { Authorization: "Bearer test-token" }
+    });
+
+    expect(response.status).toBe(200);
+    expect(body.scrapedCount).toBe(1);
+    expect(fetchNewsPreviewMock).toHaveBeenCalledWith({
+      source: "australian-mining-review",
+      maxResults: 3
+    });
+  });
+
+  it("returns a clean upstream error when a news source blocks fetching", async () => {
+    const upstreamError = new Error("guardian-au returned 403");
+    upstreamError.status = 403;
+    fetchNewsPreviewMock.mockRejectedValueOnce(upstreamError);
+    const app = createContentApiApp();
+
+    const { response, body } = await request(app, "/api/news/fetch/guardian-au?maxResults=3", {
+      headers: { Authorization: "Bearer test-token" }
+    });
+
+    expect(response.status).toBe(502);
+    expect(body.error).toBe("upstream_fetch_failed");
+  });
+
+  it("syncs a single news source", async () => {
+    syncNewsMock.mockResolvedValueOnce({
+      source: "guardian-au",
+      newCount: 1,
+      items: [{ externalId: "n2" }]
+    });
+    const app = createContentApiApp();
+
+    const { response, body } = await request(app, "/api/news/sync/guardian-au?maxResults=3", {
+      method: "POST",
+      headers: { Authorization: "Bearer test-token" }
+    });
+
+    expect(response.status).toBe(200);
+    expect(body.source).toBe("guardian-au");
+    expect(syncNewsMock).toHaveBeenCalledWith({
+      source: "guardian-au",
+      maxResults: 3
+    });
+  });
+
+  it("marks news items as processed", async () => {
+    markNewsProcessedMock.mockResolvedValueOnce(2);
+    const app = createContentApiApp();
+
+    const { response, body } = await request(app, "/api/news/mark-processed", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test-token",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        items: [
+          { source: "australian-mining-review", externalId: "abc" },
+          { source: "guardian-au", externalId: "def" }
+        ]
+      })
+    });
+
+    expect(response.status).toBe(200);
+    expect(body.updatedCount).toBe(2);
+    expect(markNewsProcessedMock).toHaveBeenCalledWith({
+      items: [
+        { source: "australian-mining-review", externalId: "abc" },
+        { source: "guardian-au", externalId: "def" }
+      ]
+    });
+  });
+
+  it("cleans up old processed and stale pending news", async () => {
+    cleanupNewsMock.mockResolvedValueOnce({
+      processedDeletedCount: 1,
+      pendingDeletedCount: 2,
+      deletedCount: 3
+    });
+    const app = createContentApiApp();
+
+    const { response, body } = await request(app, "/api/news/cleanup", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test-token",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        processedOlderThanDays: 14,
+        pendingOlderThanDays: 30
+      })
+    });
+
+    expect(response.status).toBe(200);
+    expect(body.deletedCount).toBe(3);
+    expect(cleanupNewsMock).toHaveBeenCalledWith({
+      processedOlderThanDays: 14,
+      pendingOlderThanDays: 30
     });
   });
 });

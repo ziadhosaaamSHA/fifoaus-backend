@@ -12,8 +12,28 @@ import {
   syncAllFifoJobs,
   syncFifoJobs
 } from "../jobs/sync.js";
+import {
+  cleanupNews,
+  fetchNewsPreview,
+  getNewsSourceNames,
+  listNews,
+  markNewsProcessed,
+  syncAllNews,
+  syncNews
+} from "../news/sync.js";
 
 const sourceSchema = z.enum(["seek", "linkedin"]);
+const newsSourceSchema = z.enum([
+  "abc-news",
+  "australian-mining",
+  "australian-mining-review",
+  "guardian-au",
+  "industry-qld",
+  "mining-com",
+  "mining-magazine-au",
+  "mining-technology",
+  "paydirt"
+]);
 const statusSchema = z.enum(["pending", "processed", "expired"]);
 const limitSchema = z.coerce.number().int().positive().max(100).default(20);
 const maxResultsSchema = z.coerce.number().int().positive().max(25).optional();
@@ -102,6 +122,10 @@ export function createContentApiApp() {
     res.status(200).json({ sources: getJobSourceNames() });
   });
 
+  api.get("/news/sources", (_req, res) => {
+    res.status(200).json({ sources: getNewsSourceNames() });
+  });
+
   api.get(
     "/jobs",
     asyncRoute(async (req, res) => {
@@ -174,6 +198,73 @@ export function createContentApiApp() {
     })
   );
 
+  api.get(
+    "/news",
+    asyncRoute(async (req, res) => {
+      const source = req.query.source ? newsSourceSchema.parse(req.query.source) : undefined;
+      const status = req.query.status ? statusSchema.parse(req.query.status) : undefined;
+      const limit = limitSchema.parse(req.query.limit);
+      const items = await listNews({ source, status, limit });
+
+      res.status(200).json({
+        items,
+        count: items.length
+      });
+    })
+  );
+
+  api.get(
+    "/news/fetch/:source",
+    asyncRoute(async (req, res) => {
+      const source = newsSourceSchema.parse(req.params.source);
+      const maxResults = maxResultsSchema.parse(req.query.maxResults);
+      const result = await fetchNewsPreview({ source, maxResults });
+
+      res.status(200).json(result);
+    })
+  );
+
+  api.post(
+    "/news/sync",
+    asyncRoute(async (req, res) => {
+      const maxResults = maxResultsSchema.parse(req.query.maxResults ?? req.body?.maxResults);
+      const results = await syncAllNews({ maxResults });
+
+      res.status(200).json({ results });
+    })
+  );
+
+  api.post(
+    "/news/sync/:source",
+    asyncRoute(async (req, res) => {
+      const source = newsSourceSchema.parse(req.params.source);
+      const maxResults = maxResultsSchema.parse(req.query.maxResults ?? req.body?.maxResults);
+      const result = await syncNews({ source, maxResults });
+
+      res.status(200).json(result);
+    })
+  );
+
+  api.post(
+    "/news/mark-processed",
+    asyncRoute(async (req, res) => {
+      const { items } = markProcessedBodySchema.parse(req.body);
+      const updatedCount = await markNewsProcessed({ items });
+
+      res.status(200).json({ updatedCount });
+    })
+  );
+
+  api.post(
+    "/news/cleanup",
+    asyncRoute(async (req, res) => {
+      const cleanupOptions = cleanupBodySchema.parse(req.body) || {};
+      const result = await cleanupNews(cleanupOptions);
+
+      res.status(200).json(result);
+    })
+  );
+
   app.use("/api", api);
 
   app.use("/api", (_req, res) => {
@@ -196,6 +287,17 @@ export function createContentApiApp() {
     if (err?.message?.startsWith("unknown_job_source:")) {
       console.warn("[content-api] unknown job source", err.message);
       return res.status(404).json({ error: err.message });
+    }
+    if (err?.message?.startsWith("unknown_news_source:")) {
+      console.warn("[content-api] unknown news source", err.message);
+      return res.status(404).json({ error: err.message });
+    }
+    if (err?.status >= 400 && err?.status < 600) {
+      console.warn("[content-api] upstream fetch failed", err.message);
+      return res.status(502).json({
+        error: "upstream_fetch_failed",
+        message: err.message
+      });
     }
 
     console.error("[content-api] unhandled error", err);
